@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from tools.simple_convnet import SimpleConvNet
 from tools.functions import softmax
-
+import time
 
 arg=sys.argv
 max_epochs = 20
@@ -21,6 +21,11 @@ network.load_params("params.pkl")
 
 ans=network.classi(img)
 print("softmax:")
+start=time.time()
 print(softmax(ans))
-print("Classification")
+elapsed_time=time.time()-start
+print("====================")
+print("Classification:")
 print(np.argmax(ans))
+print("====================")
+print ("elapsed_time:{:.4g}".format(elapsed_time*1000) + "[msec]")
