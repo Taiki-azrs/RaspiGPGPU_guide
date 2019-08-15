@@ -2,7 +2,7 @@
 import numpy as np
 from tools.functions import *
 from tools.util import im2col, col2im
-
+from sgemm import dot_GPU
 
 class Relu:
     def __init__(self):
@@ -213,7 +213,24 @@ class Convolution:
         # 重み・バイアスパラメータの勾配
         self.dW = None
         self.db = None
+        
+    def GPU_forward(self,x):
+        FN, C, FH, FW = self.W.shape
+        N, C, H, W = x.shape
+        out_h = 1 + int((H + 2*self.pad - FH) / self.stride)
+        out_w = 1 + int((W + 2*self.pad - FW) / self.stride)
 
+        col = im2col(x, FH, FW, self.stride, self.pad)
+        col_W = self.W.reshape(FN, -1).T
+        #out = np.dot(col, col_W) + self.b
+        out = dot_GPU(col,col_W,self.b)
+        out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
+        self.x = x
+        self.col = col
+        self.col_W = col_W
+
+        return out
+    
     def forward(self, x):
         FN, C, FH, FW = self.W.shape
         N, C, H, W = x.shape
@@ -222,10 +239,11 @@ class Convolution:
 
         col = im2col(x, FH, FW, self.stride, self.pad)
         col_W = self.W.reshape(FN, -1).T
-
+        print(col.shape)
+        print(col_W.shape)
+        print(self.b.shape)
         out = np.dot(col, col_W) + self.b
         out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
-
         self.x = x
         self.col = col
         self.col_W = col_W
