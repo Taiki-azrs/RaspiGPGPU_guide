@@ -483,17 +483,17 @@ def dot_GPU(col,col_W,b):
 
         p = H
         q = W
-        r = FW
+        r = 64#FW
         
         
         p_div = 2
         r_div = 6
         n_threads = p_div * r_div
-
+        """
         assert(p%16 == 0 and p >= p_div*16)
         assert(q >= 2)
         assert(r%64 == 0 and r >= r_div*64)
-
+        """
         # Allocate matrices.
         C = drv.alloc((p, r), 'float32')
         A = drv.alloc((p, q), 'float32')
@@ -504,8 +504,8 @@ def dot_GPU(col,col_W,b):
         alpha = 1.0
         beta = 1.0
         A[:] = col[:]
-        B[:] = col_W[:]
-        C[:] = b[:]
+        B[:] = np.pad(col_W,[(0,0),(0,64-len(col_W[1]))],'constant',constant_values=0)[:]
+        C[:] = np.pad(b,(0,64-len(b)),'constant',constant_values=0)[:]
 
         # Reference
         start = time.time()
@@ -525,8 +525,8 @@ def dot_GPU(col,col_W,b):
                 uniforms[th, 2] = q
                 uniforms[th, 3] = w if j != r_div-1 else (r-j*w*64)//64
                 uniforms[th, 4] = A.addresses()[i*16*h, 0     ]
-                uniforms[th, 5] = B.addresses()[0,      j*64*w]
-                uniforms[th, 6] = C.addresses()[i*16*h, j*64*w]
+                uniforms[th, 5] = B.addresses()[0,      0]
+                uniforms[th, 6] = C.addresses()[i*16*h, 0]
                 th += 1
         uniforms[:, 7] = A.strides[0]
         uniforms[:, 8] = B.strides[0]
