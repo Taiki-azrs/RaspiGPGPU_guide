@@ -2,7 +2,11 @@
 import numpy as np
 from tools.functions import *
 from tools.util import im2col, col2im
-from dot import GPU_dot
+try:
+    from dot import GPU_dot
+except:
+    print("not Raspi")
+
 class Relu:
     def __init__(self):
         self.mask = None
@@ -81,6 +85,9 @@ class Affine:
         x = x.reshape(x.shape[0], -1)
         self.x = x
 
+        print(self.x.shape)
+        print(self.W.shape)
+        
         out = np.dot(self.x, self.W) + self.b
         return out
 
