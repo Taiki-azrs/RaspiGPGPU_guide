@@ -51,9 +51,8 @@ class SimpleConvNet:
                                            conv_param['stride'], conv_param['pad'])
         self.layers['Relu1'] = Relu()
         self.layers['Pool1'] = Pooling(pool_h=2, pool_w=2, stride=2)
-        self.layers['Affine1'] = Affine(self.params['W2'], self.params['b2'])
-        self.layers['Relu2'] = Relu()
-        self.layers['Affine2'] = Affine(self.params['W3'], self.params['b3'])
+        self.layers['Affine1'] = GPU_Affine(self.params['W2'], self.params['b2'])
+        self.layers['Affine2'] = GPU_Affine(self.params['W3'], self.params['b3'],Relu_flag=1)
 
         self.last_layer = SoftmaxWithLoss()
 

@@ -39,9 +39,10 @@ class Sigmoid:
 
         return dx
 class GPU_Affine:
-    def __init__(self, W, b):
+    def __init__(self, W, b,Relu_flag=0):
         self.W =W
         self.b = b
+        self.Relu_flag=Relu_flag
         
         self.x = None
         self.original_x_shape = None
@@ -56,7 +57,7 @@ class GPU_Affine:
         self.x = x
 
         #out = np.dot(self.x, self.W) + self.b
-        out=GPU_dot(self.x,self.W)+self.b
+        out=GPU_dot(self.x,self.W,Relu_flag=self.Relu_flag)
         return out
 
     def backward(self, dout):
@@ -84,10 +85,6 @@ class Affine:
         self.original_x_shape = x.shape
         x = x.reshape(x.shape[0], -1)
         self.x = x
-
-        print(self.x.shape)
-        print(self.W.shape)
-        
         out = np.dot(self.x, self.W) + self.b
         return out
 

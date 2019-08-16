@@ -28,7 +28,8 @@ def dot(asm): #test
     R_STR=10
     Q_MOD=11
     VPM_FORM=12
-    UNI_ADDR=13
+    RELU_FLAG=13
+    UNI_ADDR=14
     
     COMPLETED = 0
     
@@ -61,7 +62,8 @@ def dot(asm): #test
     mov(r2,uniform,cond='zs')
     ldi(null,mask(VPM_FORM),set_flags=True)
     mov(r2,uniform,cond='zs')
-    
+    ldi(null,mask(RELU_FLAG),set_flags=True)
+    mov(r2,uniform,cond='zs')
     ldi(ra0,16*4)
 
     
@@ -139,13 +141,25 @@ def dot(asm): #test
     start_dma_load(r5)
 
     rotate(broadcast,r2,-VPM_FORM)
+
     wait_dma_load()
 
     setup_vpm_read(mode='32bit horizontal',Y=0,X=0,nrows=Iter_W) #loadしたDMAをvpmにread
     setup_vpm_write(mode='32bit horizontal',Y=0,X=0) #書き込めるようにする
 
     fmul(r0,vpm,r5)
-    fadd(vpm,ra4,r0)
+    fadd(r0,ra4,r0)
+    rotate(broadcast,r2,-RELU_FLAG)
+    mov(ra30,r5)
+    jzc(L.relu)
+    nop()
+    nop()
+    nop()
+    
+    fmax(r0,r0,0) #Relu
+    
+    L.relu
+    
     rotate(broadcast,r2,-OUT_ADDR)
     setup_dma_store(mode='32bit horizontal',nrows=Iter_W)
     start_dma_store(r5)
@@ -179,7 +193,7 @@ def dot(asm): #test
     L.skip_fin
     
     exit(interrupt=False)
-def GPU_dot(col,col_W,b):
+def GPU_dot(col,col_W,b,Relu_flag=0):
 #def main():
     with Driver() as drv:
         p,q=col.shape
@@ -221,6 +235,7 @@ def GPU_dot(col,col_W,b):
         uniforms[:,11]=B.strides[0]
         uniforms[:,12]=int(q_mod)
         uniforms[:,13]=struct.unpack('L',struct.pack('f',vpm_form))[0]
+        uniforms[:,14]=Relu_flag
         code=drv.program(dot)
         elapsed_gpu=0
         start = time.time()
