@@ -7,7 +7,7 @@ import struct
 from videocore.assembler import qpu
 from videocore.driver import Driver
 
-Iter_W=0
+
 
 def mask(idx):
     values = [1]*16
@@ -99,7 +99,7 @@ def dot(asm): #test
     fadd(ra4,rb0,ra4)
     nop()
     """
-    for i in range(Iter_W-1):
+    for i in range(1-1):
         iadd(r1,r1,ra0)
         mov(tmu0_s,r1)
         nop()
@@ -144,24 +144,26 @@ def dot(asm): #test
 
     wait_dma_load()
 
-    setup_vpm_read(mode='32bit horizontal',Y=0,X=0,nrows=Iter_W) #loadしたDMAをvpmにread
+    setup_vpm_read(mode='32bit horizontal',Y=0,X=0,nrows=1) #loadしたDMAをvpmにread
     setup_vpm_write(mode='32bit horizontal',Y=0,X=0) #書き込めるようにする
 
     fmul(r0,vpm,r5)
     fadd(r0,ra4,r0)
     rotate(broadcast,r2,-RELU_FLAG)
-    mov(ra30,r5)
+    isub(r3,r5,0)
     jzc(L.relu)
     nop()
     nop()
     nop()
     
-    fmax(r0,r0,0) #Relu
+    fmax(r0,r0,0.0)
+
     
     L.relu
+    mov(vpm,r0)
     
     rotate(broadcast,r2,-OUT_ADDR)
-    setup_dma_store(mode='32bit horizontal',nrows=Iter_W)
+    setup_dma_store(mode='32bit horizontal',nrows=1)
     start_dma_store(r5)
     #ldi(null,mask(OUT_ADDR),set_flags=True)
     #iadd(r2,r5,ra0,cond='zs')
@@ -193,7 +195,7 @@ def dot(asm): #test
     L.skip_fin
     
     exit(interrupt=False)
-def GPU_dot(col,col_W,b,Relu_flag=0):
+def GPU_dot(col,col_W,b,Relu_flag):
 #def main():
     with Driver() as drv:
         p,q=col.shape
@@ -208,17 +210,23 @@ def GPU_dot(col,col_W,b,Relu_flag=0):
         #A[:]=np.random.randn(p,q)
         #B[:]=np.random.randn(q,r)
         #C[:]=np.random.randn(p,r)
-        A[:]=col
-        B[:]=col_W
+        A[:]=col[:]
+        B[:]=col_W[:]
         C[:]=b[:]
-        CC=np.dot(A,B)+C
+
+        if(Relu_flag==0):
+            CC=np.maximum(np.dot(A,B)+C,0.0)
+        else:
+            CC=np.dot(A,B)+C
+
+
         n_threads=12
         r_dev=r/n_threads
         q_dev=int(q/64)
         q_mod=q%64
         vpm_form=1.0
-        global Iter_W
-        Iter_W=int(math.ceil(r_dev/16.0))
+        #global Iter_W
+        #Iter_W=int(math.ceil(r_dev/16.0))
         uniforms=drv.alloc((n_threads,16),'uint32')
         uniforms[:,0]=uniforms.addresses()[:,0]
         for th in range(n_threads):
@@ -235,7 +243,7 @@ def GPU_dot(col,col_W,b,Relu_flag=0):
         uniforms[:,11]=B.strides[0]
         uniforms[:,12]=int(q_mod)
         uniforms[:,13]=struct.unpack('L',struct.pack('f',vpm_form))[0]
-        uniforms[:,14]=Relu_flag
+        uniforms[:,14]=int(Relu_flag)
         code=drv.program(dot)
         elapsed_gpu=0
         start = time.time()
@@ -245,12 +253,14 @@ def GPU_dot(col,col_W,b,Relu_flag=0):
             uniforms=uniforms
         )
         elapsed_gpu += time.time() - start
-        print ("elapsed_time:{0}".format(elapsed_gpu/100) + "[sec]")
+        print ("elapsed_time:{0}".format(elapsed_gpu/1000) + "[msec]")
+        """
         print(out)
         print(CC)
         print('minimum absolute error: {:.4e}'.format(
             float(np.min(np.abs(CC - out)))))
         print('maximum absolute error: {:.4e}'.format(
             float(np.max(np.abs(CC - out)))))
+        """
         CC[:]=out[:]
         return CC

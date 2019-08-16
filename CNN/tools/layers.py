@@ -2,8 +2,10 @@
 import numpy as np
 from tools.functions import *
 from tools.util import im2col, col2im
+import time
 try:
-    from dot import GPU_dot
+    from GPU_dotRelu import GPU_dot
+    from videocore.driver import Driver
 except:
     print("not Raspi")
 
@@ -12,10 +14,12 @@ class Relu:
         self.mask = None
 
     def forward(self, x):
+        start=time.time()
         self.mask = (x <= 0)
         out = x.copy()
         out[self.mask] = 0
-
+        elapsed_gpu = time.time() - start
+        print ("Relu elapsed_time:{0}".format(elapsed_gpu/1000) + "[msec]")
         return out
 
     def backward(self, dout):
@@ -55,9 +59,7 @@ class GPU_Affine:
         self.original_x_shape = x.shape
         x = x.reshape(x.shape[0], -1)
         self.x = x
-
-        #out = np.dot(self.x, self.W) + self.b
-        out=GPU_dot(self.x,self.W,Relu_flag=self.Relu_flag)
+        out=GPU_dot(self.x,self.W,self.b,self.Relu_flag)
         return out
 
     def backward(self, dout):
@@ -85,7 +87,10 @@ class Affine:
         self.original_x_shape = x.shape
         x = x.reshape(x.shape[0], -1)
         self.x = x
+        start=time.time()
         out = np.dot(self.x, self.W) + self.b
+        elapsed_gpu = time.time() - start
+        print ("Affine elapsed_time:{0}".format(elapsed_gpu/1000) + "[msec]")
         return out
 
     def backward(self, dout):
