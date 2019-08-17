@@ -4,7 +4,7 @@ from tools.functions import *
 from tools.util import im2col, col2im
 import time
 try:
-    from GPU_dotRelu import GPU_dot
+    from newU_dotRelu import GPU_dot
     from videocore.driver import Driver
 except:
     print("not Raspi")
