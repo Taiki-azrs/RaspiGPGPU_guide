@@ -8,7 +8,7 @@ from tools.functions import softmax
 import time
 
 arg=sys.argv
-max_epochs = 20
+
 
 network = SimpleConvNet(input_dim=(1,28,28), 
                         conv_param = {'filter_num': 30, 'filter_size': 5, 'pad': 0, 'stride': 1},
@@ -17,11 +17,10 @@ img = np.array(Image.open(arg[1]).convert('L'))
 img=img.reshape(1,1,28,28)/255.0
 
 # パラメータのload
-network.load_params("params.pkl")
-
-ans=network.classi(img)
+network.load_params("data/simple_params.pkl")
 print("softmax:")
 start=time.time()
+ans=network.classi(img)
 print(softmax(ans))
 elapsed_time=time.time()-start
 print("====================")

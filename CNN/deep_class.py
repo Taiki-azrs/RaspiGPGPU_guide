@@ -2,29 +2,24 @@
 import sys, os
 sys.path.append(os.pardir)  # 親ディレクトリのファイルをインポートするための設定
 import numpy as np
+from tools.deep_convnet import DeepConvNet
 from PIL import Image
-from tools.GPU_simple_convnet import SimpleConvNet
 from tools.functions import softmax
 import time
-
 arg=sys.argv
-
-
-network = SimpleConvNet(input_dim=(1,28,28), 
-                        conv_param = {'filter_num': 30, 'filter_size': 5, 'pad': 0, 'stride': 1},
-                        hidden_size=100, output_size=10, weight_init_std=0.01)
+network = DeepConvNet()  
 img = np.array(Image.open(arg[1]).convert('L'))
 img=img.reshape(1,1,28,28)/255.0
 
+
+
 # パラメータのload
-network.load_params("data/simple_params.pkl")
-
-
+network.load_params("data/deep_params.pkl")
 print("softmax:")
 start=time.time()
 ans=network.classi(img)
-elapsed_time=time.time()-start
 print(softmax(ans))
+elapsed_time=time.time()-start
 print("====================")
 print("Classification:")
 print(np.argmax(ans))

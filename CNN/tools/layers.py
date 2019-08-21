@@ -59,16 +59,10 @@ class GPU_Affine:
         self.original_x_shape = x.shape
         x = x.reshape(x.shape[0], -1)
         self.x = x
+        start=time.time()
         out=GPU_dot(self.x,self.W,self.b,self.Relu_flag)
+        print("GPU_Affine",(time.time()-start)*1000,"[msec]")
         return out
-
-    def backward(self, dout):
-        dx = np.dot(dout, self.W.T)
-        self.dW = np.dot(self.x.T, dout)
-        self.db = np.sum(dout, axis=0)
-        
-        dx = dx.reshape(*self.original_x_shape)  # 入力データの形状に戻す（テンソル対応）
-        return dx
 
 
 class Affine:
@@ -90,6 +84,7 @@ class Affine:
         start=time.time()
         out = np.dot(self.x, self.W) + self.b
         elapsed_gpu = time.time() - start
+        print(self.x.shape,"x",self.W.shape,"->",out.shape)
         print ("Affine elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
         return out
 
@@ -252,38 +247,25 @@ class Convolution:
     def forward(self,x):
         FN, C, FH, FW = self.W.shape
         N, C, H, W = x.shape
+        print("conv-x:",x.shape)
+        print("conv-w:",self.W.shape)
         out_h = 1 + int((H + 2*self.pad - FH) / self.stride)
         out_w = 1 + int((W + 2*self.pad - FW) / self.stride)
-
+        start=time.time()
         col = im2col(x, FH, FW, self.stride, self.pad)
         col_W = self.W.reshape(FN, -1).T
+        print("im2col:",(time.time()-start)*1000,"[msec]")
+        start=time.time()
         out = np.dot(col, col_W) + self.b
+        print("conv:",(time.time()-start)*1000,"[msec]")
+        print(col.shape,"x",col_W.shape,"->",out.shape)
         out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
         self.x = x
         self.col = col
         self.col_W = col_W
 
         return out
-    """
-    def forward(self, x):
-        FN, C, FH, FW = self.W.shape
-        N, C, H, W = x.shape
-        out_h = 1 + int((H + 2*self.pad - FH) / self.stride)
-        out_w = 1 + int((W + 2*self.pad - FW) / self.stride)
 
-        col = im2col(x, FH, FW, self.stride, self.pad)
-        col_W = self.W.reshape(FN, -1).T
-        print(col.shape)
-        print(col_W.shape)
-        print(self.b.shape)
-        out = np.dot(col, col_W) + self.b
-        out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
-        self.x = x
-        self.col = col
-        self.col_W = col_W
-
-        return out
-    """
     def backward(self, dout):
         FN, C, FH, FW = self.W.shape
         dout = dout.transpose(0,2,3,1).reshape(-1, FN)
