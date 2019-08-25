@@ -1,5 +1,4 @@
 # coding:utf-8
-
 import numpy as np
 import time
 import math
@@ -7,14 +6,14 @@ import struct
 from videocore.assembler import qpu
 from videocore.driver import Driver
 
-r_simd_iter=0
+
 
 def mask(idx):
     values = [1]*16
     values[idx] = 0
     return values
 @qpu
-def dot(asm): #test
+def dot(asm,r_simd_iter): #test
     A_ADDR=0
     B_ADDR=1
     OUT_ADDR=2
@@ -22,9 +21,8 @@ def dot(asm): #test
     Q_UNI_ITER=4
     Q_UNI_MOD=5
     THR_ID=6
-    THR=7
-    R_STR=8
-
+    THR=8
+    RELU=9
     COMPLETED = 0
     
     #set uniform to r2
@@ -40,12 +38,12 @@ def dot(asm): #test
     ldi(null,mask(Q_UNI_ITER),set_flags=True)
     mov(r2,uniform,cond='zs')
     ldi(null,mask(Q_UNI_MOD),set_flags=True)
-    mov(r2,uniform,cond='zs') 
+    mov(r2,uniform,cond='zs')
     ldi(null,mask(THR_ID),set_flags=True)
     mov(r2,uniform,cond='zs')
     ldi(null,mask(THR),set_flags=True)
     mov(r2,uniform,cond='zs')
-    ldi(null,mask(R_STR),set_flags=True)
+    ldi(null,mask(RELU),set_flags=True)
     mov(r2,uniform,cond='zs')
     #set uniform end
     
@@ -116,9 +114,7 @@ def dot(asm): #test
     ldi(null,mask(Q_UNI_ITER),set_flags=True)
     iadd(r2,r2,1,cond='zs')
 
-    mutex_acquire() #排他制御 vpmは一つのため
-
-    
+    mutex_acquire() #排他制御 vpmは一つのため    
     rotate(broadcast,r2,-THR_ID)
     isub(null,r5,1,set_flags=True)
     jzc(L.VPM)
@@ -179,13 +175,46 @@ def dot(asm): #test
     nop()
     iadd(r1, r1, -1)
 
+    rotate(broadcast,r2,-RELU)
+    isub(null,r5,1)
+    jzc(L.relu_end)
+    nop()
+    nop()
+    nop()
+    
+    mutex_acquire()
+    setup_dma_load_stride(16*4)
+    setup_dma_load(mode='32bit horizontal', Y=0, nrows=r_simd_iter, mpitch=0)
+    rotate(broadcast,r2,-OUT_ADDR)
+    start_dma_load(r5)
+    mov(r3,r5)
+    wait_dma_load()
 
+    setup_vpm_read(mode='32bit horizontal',Y=0,X=0,nrows=r_simd_iter) #loadしたDMAをvpmにread
+    setup_vpm_write(mode='32bit horizontal',Y=0,X=0) #書き込めるようにする
 
+    ldi(r1,0.0)
+    for i in range(r_simd_iter):
+        mov(r0,vpm)
+        fmax(vpm,r0,r1)
+
+    
+
+    
+    setup_dma_store(mode='32bit horizontal',nrows=r_simd_iter)
+    start_dma_store(r3)
+    wait_dma_store()
+
+    mutex_release()
+
+    
+
+    L.relu_end
     
     interrupt()
     L.skip_fin
     exit(interrupt=False)
-def GPU_dot(col,col_W,b,Relu_flag):
+def GPU_dot(col,col_W,b,Relu_flag=0):
 #def main():
     with Driver() as drv:
         SIMD=16
@@ -205,8 +234,7 @@ def GPU_dot(col,col_W,b,Relu_flag):
         
         q_th=int(cal_q/n_threads) #1thあたりのqの担当量    
         q_uni_iter=int(cal_q/n_threads/UNIFORM) #uniformの繰り返し回数
-        q_uni_mod=int((cal_q/n_threads%UNIFORM)+1) #uniformのあまり分
-        global r_simd_iter
+        q_uni_mod=int((cal_q/n_threads%UNIFORM)) #uniformのあまり分
         r_simd_iter=int(cal_r/SIMD)
         """
         print("q_th",q_th)
@@ -227,40 +255,35 @@ def GPU_dot(col,col_W,b,Relu_flag):
         A[:,:q]=col[:]
         B[:q,:r]=col_W[:]
         C[:,:r]=b[:]
-        
-        
-        start=time.time()
+
+        if(Relu_flag==0):
+            CPUout=np.maximum(np.dot(A,B)+C,0.0)
+        else:
+            CPUout=np.dot(A,B)+C
         uniforms=drv.alloc((n_threads,16),'uint32')
         for th in range(n_threads):
             uniforms[th,0]=A.addresses()[0,int(th*q_th)]
             uniforms[th,1]=B.addresses()[int(th*q_th),0]
-            uniforms[th,2]=out.addresses()[0,0]
-            uniforms[th,3]=C.addresses()[0,0]
+        uniforms[:,2]=out.addresses()[0,0]
+        uniforms[:,3]=C.addresses()[0,0]
         uniforms[:,4]=q_uni_iter
-        uniforms[:,5]=q_uni_mod
+        uniforms[:,5]=q_uni_mod+1
         uniforms[:,6]=np.arange(1,(n_threads+1))
         uniforms[:,7]=n_threads
-        uniforms[:,8]=B.strides[0]
-        print("uni_set",(time.time()-start)*1000,"[msec]")
-        start=time.time()
-        code=drv.program(dot)
-        print("code",(time.time()-start)*1000,"[msec]")
-        elapsed_gpu=0
-        start = time.time()
+        uniforms[:,8]=Relu_flag+1
+        code=drv.program(dot,r_simd_iter)
         drv.execute(
             n_threads=n_threads,
             program=code,
             uniforms=uniforms
         )
-        CPUout=np.dot(A,B)+C
-        elapsed_gpu += time.time() - start
-        print(out)
-        print(CPUout)
-        print ("elapsed_time:{:.4g}".format(elapsed_gpu*1000) + "[msec]")
         print('minimum absolute error: {:.4e}'.format(
             float(np.min(np.abs(CPUout[:,:r] - out[:,:r])))))
         print('maximum absolute error: {:.4e}'.format(
             float(np.max(np.abs(CPUout[:,:r] - out[:,:r])))))
-        CPUout[:]=out[:]
+        print(out)
+        print(CPUout)
+        out_r=np.zeros((p,r))
+        out_r[:]=out[:,:r]
 
-        return CPUout[:p,:r]
+        return out_r

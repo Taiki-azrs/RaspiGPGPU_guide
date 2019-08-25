@@ -1,7 +1,7 @@
-# GPU accelerated single precision matrix multiplication (multi thread)
 import numpy as np
 import struct
 import time
+import pickle
 
 from videocore.assembler import qpu, assemble, print_qbin
 from videocore.driver import Driver
@@ -474,10 +474,11 @@ def sgemm_gpu_code(asm):
 
     exit(interrupt=False)
 
-def main(p,q,r):
+def sgemm(cal,cal_W,b):
     with Driver() as drv:
-        cal_p=p
-        cal_r=r
+        p,q=cal.shape
+        r=cal_W.shape[1]
+        cal_p=p;cal_r=r
         p_div = 6
         r_div = 2
         n_threads = p_div * r_div
@@ -498,20 +499,19 @@ def main(p,q,r):
         C = drv.alloc((cal_p, cal_r), 'float32')
         A = drv.alloc((cal_p, q), 'float32')
         B = drv.alloc((q, cal_r), 'float32')
-
+        A[:]=B[:]=C[:]=0.0
         # Initialize matrices.
-        np.random.seed(0)
         alpha = 1.0
         beta = 1.0
-        A[:] = np.random.randn(cal_p, q)
-        B[:] = np.random.randn(q, cal_r)
-        C[:] = np.random.randn(cal_p, cal_r)
-
+        A[:p,:] = cal[:]
+        B[:,:r] = cal_W[:]
+        C[:p,:r] = b[:]
         # Reference
+        """
         start = time.time()
         R = alpha*A.dot(B) + beta*C
         elapsed_ref = time.time() - start
-
+        """
         # Allocate uniforms.
         uniforms = drv.alloc((n_threads, 14), 'uint32')
         uniforms[:, 0] = uniforms.addresses()[:, 0]
@@ -536,10 +536,8 @@ def main(p,q,r):
         uniforms[:, 12] = np.arange(n_threads)
         uniforms[:, 13] = n_threads
 
-        # Allocate GPU program.
-        code = drv.program(sgemm_gpu_code)
 
-        # GPU
+        code=drv.program(sgemm_gpu_code)
         start = time.time()
         drv.execute(
                 n_threads=n_threads,
@@ -547,7 +545,7 @@ def main(p,q,r):
                 uniforms=uniforms
                 )
         elapsed_gpu = time.time() - start
-
+        """
         def Gflops(sec):
             return (2*p*q*r + 3*p*r)/sec * 1e-9
 
@@ -567,6 +565,7 @@ def main(p,q,r):
         print('maximum relative error: {:.4e}'.format(
                 float(np.max(np.abs((R - C) / R)))))
         print(R,C)
-
-if __name__ == '__main__':
-    main(576,25,30)
+        """
+        out=np.zeros((p,r))
+        out[:]=C[:p,:r]
+        return out
