@@ -290,8 +290,9 @@ with Driver() as drv:
     A=drv.alloc((i,j),'float32')
     B=drv.alloc((i,j),'float32')
     C=drv.alloc((i,j),'float32')
-    A[:,:]=1.0
-    B[:,:]=1.0
+    A[:]=np.random.randn(i,j)
+    B[:]=np.random.randn(i,j)
+    CC=A+B
     height=int(i/n_threads)
     ii=height/16
     jj=j/64
@@ -314,12 +315,8 @@ with Driver() as drv:
             uniforms=uniforms
             )
     elapsed_gpu = time.time() - start
-    print ("elapsed_time:{0}".format(elapsed_gpu) + "[sec]")
+    print ("elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
     print("{0}Gflops".format((1920*1088)/elapsed_gpu/(1000**3)))
-    CA=np.zeros((i,j))
-    CB=np.zeros((i,j))
-    CA[:]=1.0
-    CB[:]=1.0
-    CC=CA+CB
+
     print('maximum absolute error: {:.4e}'.format(
         float(np.max(np.abs(C - CC)))))
