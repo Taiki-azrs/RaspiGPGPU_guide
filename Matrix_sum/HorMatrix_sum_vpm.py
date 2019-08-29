@@ -8,7 +8,7 @@ def mask(idx):
     values[idx] = 0
     return values
 @qpu
-def pimatrix2(asm):
+def pimatrix(asm,split):
     A_ADDR=0
     B_ADDR=1
     C_ADDR=2
@@ -64,27 +64,43 @@ def pimatrix2(asm):
 
 
 
-    ldi(r3,64*16*4)
+
 
     mutex_acquire()
     rotate(broadcast,r2,-C_ADDR)
     setup_vpm_write(mode='32bit horizontal',Y=0,X=0)
-    for i in range(32):
+
+    
+    sp_ele=int(64/split)
+    sp_reg=int(sp_ele/2)
+    ldi(r3,sp_ele*16*4)
+    for i in range(sp_reg):
         mov(vpm,ra[i])
         mov(vpm,rb[i])
-    setup_dma_store(mode='32bit horizontal',Y=0,nrows=64)
+    setup_dma_store(mode='32bit horizontal',Y=0,nrows=sp_ele)
     start_dma_store(r5)
+
+    
+    for i in range(1,split):
+        iadd(broadcast,r5,r3)
+        setup_vpm_write(mode='32bit horizontal',Y=i*sp_ele)
+        for j in range(sp_reg*i,sp_reg*(i+1)):
+            mov(vpm,ra[j])
+            mov(vpm,rb[j])
+        wait_dma_store()
+        setup_dma_store(mode='32bit horizontal',Y=i*sp_ele,nrows=sp_ele)
+        start_dma_store(r5)
+                    
     wait_dma_store()
     mutex_release()
-
 
 
     ldi(null,mask(IO_ITER),set_flags=True)
     isub(r2,r2,1,cond='zs')
     jzc(L.loop)
+    iadd(broadcast,r5,r3)
     ldi(null,mask(C_ADDR),set_flags=True)
-    iadd(r2,r2,r3,cond='zs')
-    nop()
+    mov(r2,r5,cond='zs')
 
 
 
@@ -137,19 +153,22 @@ with Driver() as drv:
     uniforms[:,3]=int(io_iter)
     uniforms[:,4]=np.arange(1,(n_threads+1))
     uniforms[:,5]=n_threads
-    code=drv.program(pimatrix2)
-    elapsed_gpu=0
-    iter=1000
-    for i in range(iter):
-        start = time.time()
-        drv.execute(
-            n_threads=n_threads,
-            program=code,
-            uniforms=uniforms
-        )
-        elapsed_gpu += time.time() - start
-    elapsed_gpu=elapsed_gpu/iter
-    print ("GPU:elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
+
+
+    for k in [1,2,4,8,16]:
+        code=drv.program(pimatrix,k)
+        itr=100
+        elapsed_gpu=0
+        for i in range(itr):
+            start = time.time()
+            drv.execute(
+                n_threads=n_threads,
+                program=code,
+                uniforms=uniforms
+            )
+            elapsed_gpu += time.time() - start
+        elapsed_gpu=elapsed_gpu/itr
+        print ("split:{0}".format(k),":::GPU:elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
     print ("CPU:elapsed_time:{0}".format(elapsed_cpu*1000) + "[msec]")
     print("{0}Gflops".format((1920*1088)/elapsed_gpu/(1000**3)))
     C=C[:]
