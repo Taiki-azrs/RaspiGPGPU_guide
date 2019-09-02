@@ -1,4 +1,5 @@
 # coding:utf-8
+#TODO バイアスの加算をuniformでチャレンジ
 import numpy as np
 import time
 import math
@@ -19,13 +20,14 @@ def conv(asm): #test
     CONVW_ADDR=0
     CONVX_ADDR=1
     CONVOUT_ADDR=2
-    SIMD_ITER=3
-    TH_OH=4
-    STR=5
-    THR_ID=6
-    THR_NM=7
-    RELU=8
-    W_BACKUP=9
+    CB_ADDR=3
+    SIMD_ITER=4
+    TH_OH=5
+    STR=6
+    THR_ID=7
+    THR_NM=8
+    RELU=9
+    W_BACKUP=10
     COMPLETED = 0
     
     #set uniform to r2
@@ -35,6 +37,8 @@ def conv(asm): #test
     ldi(null,mask(CONVX_ADDR),set_flags=True)
     mov(r2,uniform,cond='zs')
     ldi(null,mask(CONVOUT_ADDR),set_flags=True)
+    mov(r2,uniform,cond='zs')
+    ldi(null,mask(CB_ADDR),set_flags=True)
     mov(r2,uniform,cond='zs')
     ldi(null,mask(SIMD_ITER),set_flags=True)
     mov(r2,uniform,cond='zs')
@@ -58,12 +62,12 @@ def conv(asm): #test
         mov(ra[i],0.0)
         
     renum=int(16/2)
-    ldi(r3,16*4)
+
     imul24(r0,element_number,4)
     rotate(broadcast,r2,-CONVX_ADDR)
     iadd(r0,r5,r0)
     L.loop
-
+    ldi(r3,16*4)
     for n in range(int(64/16)):
 
 
@@ -103,26 +107,33 @@ def conv(asm): #test
         ldi(null,mask(CONVW_ADDR),set_flags=True)
         mov(r2,r5,cond='zs')
 
+    #set b
+    rotate(uniforms_address,r2,-CB_ADDR)
+
+
+    
     mutex_acquire()
     #setup_dma_store_stride(16*4)
     rotate(broadcast,r2,-CONVOUT_ADDR)
     setup_vpm_write(mode='32bit vertical',Y=0,X=0) #書き込めるようにする
     ldi(r1,16*16*4)
     for i in range(8):
-        mov(vpm,ra[i])
+        fadd(vpm,ra[i],uniform)
         mov(ra[i],0.0)
-        mov(vpm,rb[i])
+        fadd(vpm,rb[i],uniform)
         mov(rb[i],0.0)
+    rotate(uniforms_address,r2,-CB_ADDR)
     setup_dma_store(mode='32bit horizontal',nrows=16)
     start_dma_store(r5)
     iadd(broadcast,r5,r1)
     for i in range(1,4):
         setup_vpm_write(mode='32bit vertical',Y=16*i,X=0)
         for j in range(8*i,8*(i+1)):
-            mov(vpm,ra[j])
+            fadd(vpm,ra[j],uniform)
             mov(ra[j],0.0)
-            mov(vpm,rb[j])
+            fadd(vpm,rb[j],uniform)
             mov(rb[j],0.0)
+        rotate(uniforms_address,r2,-CB_ADDR)
         wait_dma_store()
         setup_dma_store(mode='32bit horizontal',Y=16*i,nrows=16)
         mov(vpm_st_addr,r5)
@@ -170,46 +181,51 @@ def main():
         convX=drv.alloc((N,C,H,W),'float32')
         convW=drv.alloc((C,FH,FW,FN),'float32')
         convout=drv.alloc((C,oH,oW,FN),'float32')
+        cb=drv.alloc(FN,'float32')
         convout[:]=0
-        
         pad=0
         stride=1
 
         col=np.random.randn(N,C,H,W)
         col_W=np.random.randn(FN,C,FH,FW)
-        
+        b=np.random.randn(FN)
+        #b[:]=1
+        #b[16:]=0
         #col[:]=0
         #col_W[:]=0
         #col[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
         #col_W[:]=np.arange(16*25).reshape(16,1,5,5)
-        
         convX[:]=col[:]
         convW[:]=col_W.transpose(1,2,3,0)[:]
-        b=np.zeros(16)
         out=np.zeros((768,16))
+        cb[:]=b[:]
+        
+        #CPU time
         cpuetime=0
         start=time.time()
         out_h = 1 + int((H + 2*pad - FH) / stride)
         out_w = 1 + int((W + 2*pad - FW) / stride)
         col = im2col(col, FH, FW, stride, pad)
         col_W = col_W.reshape(FN, -1).T
-        #out = np.dot(col, col_W)
-        
+        out = np.dot(col, col_W)+b
         out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
         cpuetime=time.time()-start
+        
         CPU=out.transpose(0,2,3,1)
-        out = sgemm(col,col_W,b)
+        
+        #out = sgemm(col,col_W,b)
         
         uniforms=drv.alloc((n_threads,16),'uint32')
         uniforms[:,0]=convW.addresses()[0,0,0,0]
         for th in range(n_threads):
             uniforms[th,1]=convX.addresses()[0,0,th*th_oH,0]
             uniforms[th,2]=convout.addresses()[0,th*th_oH,0,0]
-        uniforms[:,3]=th_iter
-        uniforms[:,4]=th_oH
-        uniforms[:,5]=int(W*4)
-        uniforms[:,6]=np.arange(1,(n_threads+1))
-        uniforms[:,7]=n_threads
+        uniforms[:,3]=cb.addresses()[0]
+        uniforms[:,4]=th_iter
+        uniforms[:,5]=th_oH
+        uniforms[:,6]=int(W*4)
+        uniforms[:,7]=np.arange(1,(n_threads+1))
+        uniforms[:,8]=n_threads
         code=drv.program(conv)
 
         etime=0
@@ -220,6 +236,7 @@ def main():
             uniforms=uniforms
         )
         etime=time.time()-start
+        
         print("GPU time:{0}".format(etime*1000),"[msec]")
         print("CPU time:{0}".format(cpuetime*1000),"[msec]")
         print('minimum absolute error: {:.4e}'.format(
@@ -232,7 +249,7 @@ def main():
                 float(np.max(np.abs((CPU - convout) / CPU)))))
 
 
-        #print("GPU:{0}".format(convout[:,:,:,:]))
+        #print("GPU:{0}".format(convout[:]))
         #print("CPU:{0}".format(CPU))
 
 main()
