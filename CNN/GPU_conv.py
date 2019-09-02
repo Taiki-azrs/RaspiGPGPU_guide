@@ -1,5 +1,5 @@
 # coding:utf-8
-#TODO バイアスの加算をuniformでチャレンジ
+#TODO Cループバグ直す
 import numpy as np
 import time
 import math
@@ -15,8 +15,13 @@ def mask(idx):
     values = [1]*16
     values[idx] = 0
     return values
+def mask2(idx1,idx2):
+    values = [1]*16
+    values[idx1] = 0
+    values[idx2] = 0
+    return values
 @qpu
-def conv(asm): #test
+def conv(asm,H,W,FH,FW,FN): #test
     CONVW_ADDR=0
     CONVX_ADDR=1
     CONVOUT_ADDR=2
@@ -24,10 +29,14 @@ def conv(asm): #test
     SIMD_ITER=4
     TH_OH=5
     STR=6
-    THR_ID=7
-    THR_NM=8
-    RELU=9
-    W_BACKUP=10
+    C_ITER=7
+    THR_ID=8
+    THR_NM=9
+    RELU=10
+    W_BACKUP=11
+    X_BACKUP=12
+    OUT_BACKUP=13
+    SITER_BACKUP=14
     COMPLETED = 0
     
     #set uniform to r2
@@ -46,6 +55,8 @@ def conv(asm): #test
     mov(r2,uniform,cond='zs')
     ldi(null,mask(STR),set_flags=True)
     mov(r2,uniform,cond='zs')
+    ldi(null,mask(C_ITER),set_flags=True)
+    mov(r2,uniform,cond='zs')
     ldi(null,mask(THR_ID),set_flags=True)
     mov(r2,uniform,cond='zs')
     ldi(null,mask(THR_NM),set_flags=True)
@@ -55,19 +66,32 @@ def conv(asm): #test
     ldi(null,mask(W_BACKUP),set_flags=True)
     rotate(broadcast,r2,-CONVW_ADDR)
     mov(r2,r5,cond='zs')
-    #set uniform end
     
+    ldi(null,mask(X_BACKUP),set_flags=True)
+    rotate(broadcast,r2,-CONVX_ADDR)
+    mov(r2,r5,cond='zs')
+    
+    ldi(null,mask(OUT_BACKUP),set_flags=True)
+    rotate(broadcast,r2,-CONVOUT_ADDR)
+    mov(r2,r5,cond='zs')
+    
+    ldi(null,mask(SITER_BACKUP),set_flags=True)
+    rotate(broadcast,r2,-SIMD_ITER)
+    mov(r2,r5,cond='zs')
+    
+    #set uniform end
+
     for i in range(32):
         mov(rb[i],0.0)
         mov(ra[i],0.0)
-        
+    L.cloop
     renum=int(16/2)
-
     imul24(r0,element_number,4)
     rotate(broadcast,r2,-CONVX_ADDR)
     iadd(r0,r5,r0)
-    L.loop
+    L.simdloop
     ldi(r3,16*4)
+
     for n in range(int(64/16)):
 
 
@@ -108,32 +132,57 @@ def conv(asm): #test
         mov(r2,r5,cond='zs')
 
     #set b
-    rotate(uniforms_address,r2,-CB_ADDR)
-
-
+    rotate(broadcast,r2,-C_ITER)
+    isub(null,r5,1)
+    jzc(L.add_b)
+    nop()
+    nop()
+    nop()
+    for i in range(int(64/FN)):
+        rotate(uniforms_address,r2,-CB_ADDR)
+        nop();nop()
+        for j in range(int(FN/2)):
+            idx=int(j+(i*FN/2))
+            fadd(ra[idx],ra[idx],uniform)
+            fadd(rb[idx],rb[idx],uniform)
+    L.add_b
     
+    ldi(r1,16*16*4)
     mutex_acquire()
     #setup_dma_store_stride(16*4)
     rotate(broadcast,r2,-CONVOUT_ADDR)
+    setup_dma_load(mode='32bit horizontal', Y=0, nrows=16, mpitch=0)
+    start_dma_load(r5)
+    wait_dma_load()
+    setup_vpm_read(mode='32bit vertical', Y=0, X=0, nrows=16)
     setup_vpm_write(mode='32bit vertical',Y=0,X=0) #書き込めるようにする
-    ldi(r1,16*16*4)
+
+    setup_dma_load(mode='32bit horizontal', Y=16, X=0, nrows=16, mpitch=0)
+    iadd(vpm_ld_addr,r1,r5)
+    
+
     for i in range(8):
-        fadd(vpm,ra[i],uniform)
+        fadd(vpm,vpm,ra[i])
+        fadd(vpm,vpm,rb[i])
         mov(ra[i],0.0)
-        fadd(vpm,rb[i],uniform)
         mov(rb[i],0.0)
-    rotate(uniforms_address,r2,-CB_ADDR)
     setup_dma_store(mode='32bit horizontal',nrows=16)
     start_dma_store(r5)
     iadd(broadcast,r5,r1)
+
+
+    
     for i in range(1,4):
+        wait_dma_load()
+        setup_vpm_read(mode='32bit vertical', Y=16*i, X=0, nrows=16)
         setup_vpm_write(mode='32bit vertical',Y=16*i,X=0)
+        setup_dma_load(mode='32bit horizontal', Y=16*(i+1), X=0, nrows=16, mpitch=0)
+        iadd(vpm_ld_addr,r1,r5)
         for j in range(8*i,8*(i+1)):
-            fadd(vpm,ra[j],uniform)
+            fadd(vpm,vpm,ra[j])
+            fadd(vpm,vpm,rb[j])
             mov(ra[j],0.0)
-            fadd(vpm,rb[j],uniform)
             mov(rb[j],0.0)
-        rotate(uniforms_address,r2,-CB_ADDR)
         wait_dma_store()
         setup_dma_store(mode='32bit horizontal',Y=16*i,nrows=16)
         mov(vpm_st_addr,r5)
@@ -144,11 +193,42 @@ def conv(asm): #test
     
     ldi(null,mask(SIMD_ITER),set_flags=True)
     isub(r2,r2,1,cond='zs')
-    jzc(L.loop)
+    jzc(L.simdloop)
     ldi(r1,16*64*4)
     ldi(null,mask(CONVOUT_ADDR),set_flags=True)
     iadd(r2,r2,r1,cond='zs')
+
     
+
+    rotate(broadcast,r2,-SITER_BACKUP)
+    ldi(null,mask(SIMD_ITER),set_flags=True)
+    mov(r2,r5,cond='zs')
+    
+    
+    rotate(broadcast,r2,-OUT_BACKUP)
+    ldi(null,mask(CONVOUT_ADDR),set_flags=True)
+    mov(r2,r5,cond='zs')
+
+    
+    ldi(r1,H*W*4)
+    rotate(broadcast,r2,-X_BACKUP)
+    ldi(null,mask2(CONVX_ADDR,X_BACKUP),set_flags=True)
+    iadd(r2,r5,r1,cond='zs')
+    
+    
+    ldi(r1,FH*FW*FN*4)
+    rotate(broadcast,r2,-W_BACKUP)
+    ldi(null,mask2(CONVW_ADDR,W_BACKUP),set_flags=True)
+    iadd(r2,r5,r1,cond='zs')
+    
+    ldi(null,mask(C_ITER),set_flags=True)
+    isub(r2,r2,1,cond='zs')
+    jzc(L.cloop)
+    nop()
+    nop()
+    nop()
+    nop()
+   
 #====semafo=====    　すべてのスレッドが終わるまで待つ　詳細はquita見て
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
@@ -173,34 +253,35 @@ def main():
         SIMD=16
         UNIFORM=64
         n_threads=12
-        N=1;C=1;H=28;W=36#28
+        N=1;C=2;H=28;W=36#28
         FN=16;FH=5;FW=5
         oH=H-int(FH/2)*2;oW=W-int(FW/2)*2
         th_oH=int(oH/n_threads)
         th_iter=int((th_oH*oW)/64)
         convX=drv.alloc((N,C,H,W),'float32')
         convW=drv.alloc((C,FH,FW,FN),'float32')
-        convout=drv.alloc((C,oH,oW,FN),'float32')
-        cb=drv.alloc(FN,'float32')
+        convout=drv.alloc((1,oH,oW,FN),'float32')
         convout[:]=0
+        cb=drv.alloc(FN,'float32')
         pad=0
         stride=1
 
         col=np.random.randn(N,C,H,W)
         col_W=np.random.randn(FN,C,FH,FW)
         b=np.random.randn(FN)
-        #b[:]=1
-        #b[16:]=0
-        #col[:]=0
-        #col_W[:]=0
+        
+
         #col[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
-        #col_W[:]=np.arange(16*25).reshape(16,1,5,5)
+        col_W[:]=1#np.arange(16*25).reshape(16,1,5,5)
+        b[:]=0
+
         convX[:]=col[:]
         convW[:]=col_W.transpose(1,2,3,0)[:]
         out=np.zeros((768,16))
         cb[:]=b[:]
         
-        #CPU time
+        #CPU Calculation
+        #im2col->dot
         cpuetime=0
         start=time.time()
         out_h = 1 + int((H + 2*pad - FH) / stride)
@@ -210,7 +291,6 @@ def main():
         out = np.dot(col, col_W)+b
         out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
         cpuetime=time.time()-start
-        
         CPU=out.transpose(0,2,3,1)
         
         #out = sgemm(col,col_W,b)
@@ -224,9 +304,11 @@ def main():
         uniforms[:,4]=th_iter
         uniforms[:,5]=th_oH
         uniforms[:,6]=int(W*4)
-        uniforms[:,7]=np.arange(1,(n_threads+1))
-        uniforms[:,8]=n_threads
-        code=drv.program(conv)
+        uniforms[:,7]=C
+        uniforms[:,8]=np.arange(1,(n_threads+1))
+        uniforms[:,9]=n_threads
+        uniforms[:,10]=0
+        code=drv.program(conv,H,W,FH,FW,FN)
 
         etime=0
         start=time.time()
@@ -236,7 +318,7 @@ def main():
             uniforms=uniforms
         )
         etime=time.time()-start
-        
+
         print("GPU time:{0}".format(etime*1000),"[msec]")
         print("CPU time:{0}".format(cpuetime*1000),"[msec]")
         print('minimum absolute error: {:.4e}'.format(
@@ -249,7 +331,8 @@ def main():
                 float(np.max(np.abs((CPU - convout) / CPU)))))
 
 
-        #print("GPU:{0}".format(convout[:]))
-        #print("CPU:{0}".format(CPU))
+        print("GPU:{0}".format(convout[:]))
+        print("CPU:{0}".format(CPU))
+        print(convout[0,0,16:,:]-CPU[0,0,16:,:])
 
 main()
