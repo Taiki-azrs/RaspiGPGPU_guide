@@ -5,8 +5,8 @@ from tools.util import im2col, col2im
 import time
 try:
     from GPU_dotRelu import GPU_dot
+    from GPU_pool import GPU_pool
     from videocore.driver import Driver
-    from GPU_sgemm import sgemm
 except:
     print("not Raspi")
 
@@ -47,18 +47,11 @@ class GPU_Affine:
     def __init__(self, W, b,Relu_flag=0):
         self.W =W
         self.b = b
-        self.Relu_flag=Relu_flag
-        
+        self.Relu_flag=Relu_flag        
         self.x = None
-        self.original_x_shape = None
-        # 重み・バイアスパラメータの微分
-        self.dW = None
-        self.db = None
+
 
     def forward(self, x):
-        # テンソル対応
-        self.original_x_shape = x.shape
-        x = x.reshape(x.shape[0], -1)
         self.x = x
         start=time.time()
         out=GPU_dot(self.x,self.W,self.b,self.Relu_flag)
@@ -266,43 +259,6 @@ class Convolution:
         self.col_W = col_W
 
         return out
-class GPU_Convolution:
-    def __init__(self, W, b, stride=1, pad=0):
-        self.W = W
-        self.b = b
-        self.stride = stride
-        self.pad = pad
-        
-        # 中間データ（backward時に使用）
-        self.x = None   
-        self.col = None
-        self.col_W = None
-        
-        # 重み・バイアスパラメータの勾配
-        self.dW = None
-        self.db = None
-        
-    def forward(self,x):
-        FN, C, FH, FW = self.W.shape
-        N, C, H, W = x.shape
-        print("conv-x:",x.shape)
-        print("conv-w:",self.W.shape)
-        out_h = 1 + int((H + 2*self.pad - FH) / self.stride)
-        out_w = 1 + int((W + 2*self.pad - FW) / self.stride)
-        start=time.time()
-        col = im2col(x, FH, FW, self.stride, self.pad)
-        col_W = self.W.reshape(FN, -1).T
-        print("im2col:",(time.time()-start)*1000,"[msec]")
-        start=time.time()
-        out = sgemm(col,col_W,self.b)
-        print("conv:",(time.time()-start)*1000,"[msec]")
-        print(col.shape,"x",col_W.shape,"->",out.shape)
-        out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
-        self.x = x
-        self.col = col
-        self.col_W = col_W
-
-        return out
 
 
 class Pooling:
@@ -313,7 +269,6 @@ class Pooling:
         self.pad = pad
         
         self.x = None
-        self.arg_max = None
 
     def forward(self, x):
         N, C, H, W = x.shape
@@ -323,24 +278,17 @@ class Pooling:
         col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad)
         col = col.reshape(-1, self.pool_h*self.pool_w)
 
-        arg_max = np.argmax(col, axis=1)
         out = np.max(col, axis=1)
         out = out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
-
-        self.x = x
-        self.arg_max = arg_max
-
         return out
+class GPU_Pooling:
+    def __init__(self, pool_h, pool_w, stride=1, pad=0):
+        self.pool_h = pool_h
+        self.pool_w = pool_w
+        self.stride = stride
+        self.pad = pad
+        
+        self.x = None
 
-    def backward(self, dout):
-        dout = dout.transpose(0, 2, 3, 1)
-        
-        pool_size = self.pool_h * self.pool_w
-        dmax = np.zeros((dout.size, pool_size))
-        dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
-        dmax = dmax.reshape(dout.shape + (pool_size,)) 
-        
-        dcol = dmax.reshape(dmax.shape[0] * dmax.shape[1] * dmax.shape[2], -1)
-        dx = col2im(dcol, self.x.shape, self.pool_h, self.pool_w, self.stride, self.pad)
-        
-        return dx
+    def forward(self, x):
+        return GPU_pool(x,self.stride,self.pad)

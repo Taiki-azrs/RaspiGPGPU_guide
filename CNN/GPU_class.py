@@ -20,11 +20,9 @@ img=img.reshape(1,1,28,28)/255.0
 network.load_params("data/simple_params.pkl")
 
 
-print("softmax:")
 start=time.time()
 ans=network.classi(img)
 elapsed_time=time.time()-start
-print(softmax(ans))
 print("====================")
 print("Classification:")
 print(np.argmax(ans))

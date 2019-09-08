@@ -18,10 +18,8 @@ img=img.reshape(1,1,28,28)/255.0
 
 # パラメータのload
 network.load_params("data/simple_params.pkl")
-print("softmax:")
 start=time.time()
 ans=network.classi(img)
-print(softmax(ans))
 elapsed_time=time.time()-start
 print("====================")
 print("Classification:")

@@ -21,7 +21,7 @@ def mask2(idx1,idx2):
     values[idx2] = 0
     return values
 @qpu
-def conv(asm,H,W,C,stride):
+def pool(asm,H,W,C,stride):
     X_ADDR=1
     OUT_ADDR=2
     THR_ID=3
@@ -42,9 +42,9 @@ def conv(asm,H,W,C,stride):
 
 
     for i in range(32):
-        mov(ra[i],0).mov(rb[i],0)
+        mov(ra[i],0)
 
-    iter=int(12*(C/16))
+    REGNUM=int(12*(C/16))
     for k in range(12):
         ldi(r0,k*C*stride*4)
         imul24(r1,element_number,4)
@@ -72,9 +72,9 @@ def conv(asm,H,W,C,stride):
     #setup_dma_store_stride(16*4)
     rotate(broadcast,r2,-OUT_ADDR)
     setup_vpm_write(mode='32bit horizontal',Y=0,X=0) #書き込めるようにする
-    for i in range(iter):
+    for i in range(REGNUM):
         mov(vpm,ra[i])
-    setup_dma_store(mode='32bit horizontal',nrows=iter)
+    setup_dma_store(mode='32bit horizontal',nrows=REGNUM)
     start_dma_store(r5)
     iadd(broadcast,r5,r1)
     wait_dma_store()
@@ -99,35 +99,42 @@ def conv(asm,H,W,C,stride):
     interrupt()
     L.skip_fin
     exit(interrupt=False)
-#def GPU_dot(col,col_W,b,Relu_flag=0):
-def main():
+def GPU_pool(x,stride,pad):
+#def main():
     with Driver() as drv:
         SIMD=16
         UNIFORM=64
         n_threads=12
-        N=1;C=32;H=24;W=24
+        #N=1;C=30;H=24;W=24
+        N,C,H,W=x.shape
+        cal_C=C
+        Cmod=C%SIMD
+        if Cmod!=0:
+            cal_C+=SIMD-Cmod
         FH=2;FW=2
         oH=int(H/FH);oW=int(W/FW)
         th_oH=int(oH/n_threads)
         th_iter=int((th_oH*oW)/SIMD)
-        X=drv.alloc((N,H,W,C),'float32')
-        out=drv.alloc((1,oH,oW,C),'float32')
-        pad=0
-        stride=2
-        x=np.random.randn(N,C,H,W)
-        x=np.arange(N*C*H*W).reshape(N,C,H,W)
+        X=drv.alloc((N,H,W,cal_C),'float32')
+        out=drv.alloc((1,oH,oW,cal_C),'float32')
+        X[:]=0
+        X[:,:,:,:C]=x.transpose(0,2,3,1)[:]
+        """
+        x=np.random.randn(N,cal_C,H,W)
+        x=np.arange(N*cal_C*H*W).reshape(N,cal_C,H,W)
         X[:]=x.transpose(0,2,3,1)
 
+        """
+        cetime=0
+        start=time.time()
         out_h = int(1 + (H - FH) / stride)
         out_w = int(1 + (W - FW) / stride)
-
         col = im2col(x, FH, FW, stride, pad)
         col = col.reshape(-1, FH*FW)
-
         arg_max = np.argmax(col, axis=1)
         CPUout = np.max(col, axis=1)
         CPUout = CPUout.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
-
+        cetime=time.time()-start
         
         uniforms=drv.alloc((n_threads,16),'uint32')
         for th in range(n_threads):
@@ -135,34 +142,38 @@ def main():
             uniforms[th,1]=out.addresses()[0,th*th_oH,0,0]
         uniforms[:,2]=np.arange(1,(n_threads+1))
         uniforms[:,3]=n_threads
-        code=drv.program(conv,H,W,C,stride)
+        code=drv.program(pool,H,W,cal_C,stride)
 
-        etime=0
+        getime=0
         start=time.time()
         drv.execute(
             n_threads=n_threads,
             program=code,
             uniforms=uniforms
         )
-        etime=time.time()-start
+        getime=time.time()-start
+        print("===========Pooling=============")
+        print("CPU time:{:.4f}[msec]".format(cetime*1000))
+        print("GPU time:{:.4f}[msec]".format(getime*1000))
         """
         print("GPU time:{0}".format(etime*1000),"[msec]")
         print("CPU time:{0}".format(cpuetime*1000),"[msec]")
         """
-        CPUout=CPUout.transpose(0,2,3,1)
+        out_r=np.zeros((1,C,oH,oW))
+        out_r[:]=out.transpose(0,3,1,2)[:,:C,:,:]
+
         print('minimum absolute error: {:.4e}'.format(
-            float(np.min(np.abs(CPUout[:] - out[:])))))
+            float(np.min(np.abs(CPUout[:] - out_r[:])))))
         print('maximum absolute error: {:.4e}'.format(
-            float(np.max(np.abs(CPUout[:] - out[:])))))
+            float(np.max(np.abs(CPUout[:] - out_r[:])))))
+        """
         print('minimum relative error: {:.4e}'.format(
-                float(np.min(np.abs((CPUout - out) / CPUout)))))
+                float(np.min(np.abs((CPUout - out_r) / CPUout)))))
         print('maximum relative error: {:.4e}'.format(
-                float(np.max(np.abs((CPUout - out) / CPUout)))))
+                float(np.max(np.abs((CPUout - out_r) / CPUout)))))
 
+        print("GPU{0}".format(out_r))
+        print("CPU{0}".format(CPUout))
+        """
+        return out_r
 
-        print("GPU:{0}".format(out[:]))
-        print("CPU:{0}".format(CPUout))
-        print(out-CPUout)
-
-
-main()
