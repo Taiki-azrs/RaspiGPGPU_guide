@@ -96,11 +96,11 @@ def conv(asm,H,W,FH,FW,FN): #test
 
 
         if(n*16==32):
-            ldi(r1,4*4)
+            ldi(r1,(int(FW/2))*2*4)
             iadd(r0,r0,r1)
 
-        for i in range(5):
-            for j in range(5):
+        for i in range(FH):
+            for j in range(FW):
                 mov(uniforms_address,r2)
                 mov(tmu0_s,r0)
                 iadd(r0,r0,4)
@@ -118,10 +118,10 @@ def conv(asm,H,W,FH,FW,FN): #test
             nop()
             rotate(broadcast,r2,-STR)
             iadd(r0,r0,r5)
-            ldi(r1,5*4)
+            ldi(r1,FW*4)
             isub(r0,r0,r1)
 
-        ldi(r1,5)
+        ldi(r1,FW)
         imul24(r1,r1,r5)
         isub(r0,r0,r1)
         iadd(r0,r0,r3)
@@ -149,6 +149,7 @@ def conv(asm,H,W,FH,FW,FN): #test
     
     ldi(r1,16*16*4)
     mutex_acquire()
+    setup_dma_load_stride(16*4)
     #setup_dma_store_stride(16*4)
     rotate(broadcast,r2,-CONVOUT_ADDR)
     setup_dma_load(mode='32bit horizontal', Y=0, nrows=16, mpitch=0)
@@ -253,8 +254,8 @@ def main():
         SIMD=16
         UNIFORM=64
         n_threads=12
-        N=1;C=2;H=28;W=36#28
-        FN=16;FH=5;FW=5
+        N=1;C=2;H=26;W=34#28
+        FN=16;FH=3;FW=3
         oH=H-int(FH/2)*2;oW=W-int(FW/2)*2
         th_oH=int(oH/n_threads)
         th_iter=int((th_oH*oW)/64)
@@ -271,8 +272,8 @@ def main():
         b=np.random.randn(FN)
         
 
-        #col[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
-        col_W[:]=1#np.arange(16*25).reshape(16,1,5,5)
+        col[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
+        col_W[:]=np.arange(16*FH*FW).reshape(16,1,FH,FW)
         b[:]=0
 
         convX[:]=col[:]
@@ -333,6 +334,5 @@ def main():
 
         print("GPU:{0}".format(convout[:]))
         print("CPU:{0}".format(CPU))
-        print(convout[0,0,16:,:]-CPU[0,0,16:,:])
 
 main()
