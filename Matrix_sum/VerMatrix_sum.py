@@ -1,5 +1,4 @@
 # coding:utf-8
-#TODO 転送できていない原因
 import numpy as np
 #np.set_printoptions(threshold=np.inf)
 import time
@@ -8,12 +7,6 @@ from videocore.driver import Driver
 def mask(idx):
     values = [1]*16
     values[idx] = 0
-    return values
-def thr_mask(idx1,idx2,idx3):
-    values = [1]*16
-    values[idx1] = 0
-    values[idx2] = 0
-    values[idx3] = 0
     return values
 @qpu
 def pimatrix(asm):
@@ -28,7 +21,6 @@ def pimatrix(asm):
     W_BACKUP=8
     COMPLETED=0
 
-    mov(r2,1)
     ldi(null,mask(A_ADDR),set_flags=True)
     mov(r2,uniform,cond='zs')
     ldi(null,mask(B_ADDR),set_flags=True)
@@ -202,6 +194,5 @@ with Driver() as drv:
     elapsed_gpu = time.time() - start
     print ("GPU:elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
     print ("CPU:elapsed_time:{0}".format(elapsed_cpu*1000) + "[msec]")
-    print("{0}Gflops".format((1920*1088)/elapsed_gpu/(1000**3)))
     print('maximum absolute error: {:.4e}'.format(
         float(np.max(np.abs(C - CC)))))

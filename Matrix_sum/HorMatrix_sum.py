@@ -1,4 +1,4 @@
-# coding:utf-8
+#coding:utf-8
 import numpy as np
 import time
 from videocore.assembler import qpu
@@ -8,17 +8,17 @@ def mask(idx):
     values[idx] = 0
     return values
 @qpu
-def pimatrix2(asm):
-    A_ADDR=0
+def piadd(asm):
+    A_ADDR=0 #インデックス
     B_ADDR=1
     C_ADDR=2
     IO_ITER=3
     THR_ID=4
     THR_NM=5
-    COMPLETED=0
+    COMPLETED=0 #セマフォ用
 
-    mov(r2,1)
-    ldi(null,mask(A_ADDR),set_flags=True)
+    
+    ldi(null,mask(A_ADDR),set_flags=True)#r2にuniformを格納
     mov(r2,uniform,cond='zs')
     ldi(null,mask(B_ADDR),set_flags=True)
     mov(r2,uniform,cond='zs')
@@ -31,7 +31,7 @@ def pimatrix2(asm):
     ldi(null,mask(THR_NM),set_flags=True)
     mov(r2,uniform,cond='zs')
     
-    imul24(r3,element_number,4)
+    imul24(r3,element_number,4) 
     rotate(broadcast,r2,-A_ADDR)
     iadd(r0,r5,r3)
     rotate(broadcast,r2,-B_ADDR)
@@ -88,7 +88,7 @@ def pimatrix2(asm):
 
 
 
-#====semafo=====    
+#====semaphore=====    
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
     iadd(null,r5,-1,set_flags=True)
@@ -100,7 +100,7 @@ def pimatrix2(asm):
     iadd(r0, r5, -1,set_flags=True)
     L.sem_down
     jzc(L.sem_down)
-    sema_down(COMPLETED)    # Wait completion of all threads.
+    sema_down(COMPLETED)    # すべてのスレッドが終了するまで待つ
     nop()
     iadd(r0, r0, -1)
     
@@ -117,9 +117,9 @@ with Driver() as drv:
     n_threads=12
     SIMD=16
     R=64
-    th_H=int(H/n_threads)
-    th_ele=th_H*W
-    io_iter=int(th_ele/(R*SIMD))
+    th_H=int(H/n_threads) #1スレッドの担当行
+    th_ele=th_H*W #1スレッドの担当要素
+    io_iter=int(th_ele/(R*SIMD)) #何回転送するか
     A=drv.alloc((H,W),'float32')
     B=drv.alloc((H,W),'float32')
     C=drv.alloc((H,W),'float32')
@@ -127,7 +127,7 @@ with Driver() as drv:
     A[:]=np.random.randn(H,W)
     B[:]=np.random.randn(H,W)
     start = time.time()
-    CC=A+B
+    CC=A+B #CPUの行列和
     elapsed_cpu = time.time() - start
     uniforms=drv.alloc((n_threads,6),'uint32')
     for th in range(n_threads):
@@ -137,7 +137,7 @@ with Driver() as drv:
     uniforms[:,3]=int(io_iter)
     uniforms[:,4]=np.arange(1,(n_threads+1))
     uniforms[:,5]=n_threads
-    code=drv.program(pimatrix2)
+    code=drv.program(piadd)
     elapsed_gpu=0
     iter=1
     for i in range(iter):
@@ -151,5 +151,5 @@ with Driver() as drv:
     elapsed_gpu=elapsed_gpu/iter
     print ("GPU:elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
     print ("CPU:elapsed_time:{0}".format(elapsed_cpu*1000) + "[msec]")
-    print('maximum absolute error: {:.4e}'.format(
+    print('maximum absolute error: {:.4e}'.format(  
         float(np.max(np.abs(C - CC)))))
