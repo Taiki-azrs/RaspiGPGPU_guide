@@ -139,7 +139,7 @@ with Driver() as drv:
     uniforms[:,5]=n_threads
     code=drv.program(pimatrix2)
     elapsed_gpu=0
-    iter=1000
+    iter=1
     for i in range(iter):
         start = time.time()
         drv.execute(
@@ -151,10 +151,5 @@ with Driver() as drv:
     elapsed_gpu=elapsed_gpu/iter
     print ("GPU:elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
     print ("CPU:elapsed_time:{0}".format(elapsed_cpu*1000) + "[msec]")
-    print("{0}Gflops".format((1920*1088)/elapsed_gpu/(1000**3)))
-    C=C[:]
-    CC=CC[:]
-    print(C)
-    print(CC)
     print('maximum absolute error: {:.4e}'.format(
         float(np.max(np.abs(C - CC)))))

@@ -111,6 +111,7 @@ def pimatrix(asm):
         setup_dma_store(mode='32bit horizontal',Y=16*i,nrows=16)
         mov(vpm_st_addr,r5)
         iadd(broadcast,r5,r3)
+
     mutex_release()
 
 
@@ -202,9 +203,5 @@ with Driver() as drv:
     print ("GPU:elapsed_time:{0}".format(elapsed_gpu*1000) + "[msec]")
     print ("CPU:elapsed_time:{0}".format(elapsed_cpu*1000) + "[msec]")
     print("{0}Gflops".format((1920*1088)/elapsed_gpu/(1000**3)))
-    C=C[:]
-    CC=CC[:]
-    print(C)
-    print(CC)
     print('maximum absolute error: {:.4e}'.format(
         float(np.max(np.abs(C - CC)))))

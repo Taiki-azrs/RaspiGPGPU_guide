@@ -210,55 +210,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     nop()
     nop()
     nop()
-    
-    rotate(broadcast,r2,-RELU)
-    isub(null,r5,1)
-    jzc(L.relu_end)
-    nop()
-    nop()
-    nop()
-    
-    imul24(r0,element_number,4)
-    rotate(broadcast,r2,-CONVOUT_ADDR)
-    iadd(r0,r5,r0)
-
-
-    L.reluloop
-    ldi(r3,16*4)
-    for i in range(32):
-        mov(tmu0_s,r0)
-        iadd(r0,r0,r3)
-        nop(sig='load tmu0')
-        mov(r1,0.0)
-        fmax(ra[i],r4,r1)
-
-        
-        mov(tmu0_s,r0)
-        iadd(r0,r0,r3)
-        nop(sig='load tmu0')
-        mov(r1,0.0)
-        fmax(rb[i],r4,r1)
-    setup_dma_store_stride(0)
-    mutex_acquire()
-    setup_vpm_write(mode='32bit horizontal',Y=0,X=0)
-    for i in range(32):
-        mov(vpm,ra[i])
-        mov(vpm,rb[i])
-    setup_dma_store(mode='32bit horizontal',Y=0,nrows=64)
-    start_dma_store(r5)
-    wait_dma_store()
-    ldi(r1,16*64*4)
-    iadd(broadcast,r5,r1)
-    mutex_release()
-    ldi(null,mask(SIMD_ITER),set_flags=True)
-    isub(r2,r2,1,cond='zs')
-    jzc(L.reluloop)
-    nop()
-    nop()
-    nop()
-    
-    L.relu_end
-    
+   
 #====semafo=====    　すべてのスレッドが終わるまで待つ　詳細はquita見て
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
@@ -277,16 +229,14 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     interrupt()
     L.skip_fin
     exit(interrupt=False)
-def GPU_conv(x,w,b,Relu_flag=0):
-#def main():
+#def GPU_conv(x,w,b,Relu_flag=0):
+def main():
     with Driver() as drv:
         SIMD=16;UNIFORM=64;n_threads=12
-        """
+        #N,C,H,W=x.shape
+        #FN,C,FH,FW=w.shape
         N=1;C=1;H=28;W=28
-        FN=32;FH=5;FW=5
-        """
-        N,C,H,W=x.shape
-        FN,C,FH,FW=w.shape
+        FN=32;FC=1;FH=5;FW=5
         calc_H=H;calc_W=W;calc_FN=FN
         eH=int(FH/2)*2;eW=int(FW/2)*2
         oH=H-eH;oW=W-eW
@@ -300,27 +250,30 @@ def GPU_conv(x,w,b,Relu_flag=0):
         calc_oH=calc_H-eH
         calc_oW=calc_W-eW
 
+        print(calc_FN)
         th_oH=int(calc_oH/n_threads)
         th_iter=int((th_oH*calc_oW)/(64/calc_FN*16))
         convX=drv.alloc((N,C,calc_H,calc_W),'float32')
         convW=drv.alloc((C,FH,FW,calc_FN),'float32')
         convout=drv.alloc((1,calc_oH,calc_oW,calc_FN),'float32')
-        cb=drv.alloc(calc_FN,'float32')
-        convout[:]=0;convX[:]=0;convW[:]=0;cb[:]=0
+        convout[:]=0;convX[:]=0;convW[:]=0
+        cb=drv.alloc(FN,'float32')
         pad=0
         stride=1
-        """
-        x=np.random.randn(N,C,H,W)
-        w=np.random.randn(FN,C,FH,FW)
-        b=np.random.randn(FN)
-        x[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
-        w[:]=np.arange(FN*FH*FW).reshape(FN,1,FH,FW)
-        b[:FN]=np.arange(FN)
-        """
         
-        convX[:,:,:H,:W]=x[:]
-        convW[:,:,:,:FN]=w.transpose(1,2,3,0)[:]
-        cb[:FN]=b[:]
+
+        col=np.random.randn(N,C,H,W)
+        col_W=np.random.randn(FN,C,FH,FW)
+        b=np.random.randn(FN)
+        #col[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
+        #col_W[:]=1#np.arange(FN*FH*FW).reshape(FN,1,FH,FW)
+        #b[:]=0
+        
+        #convX[:,:,:H,:W]=x[:]
+        #convW[:,:,:,:FN]=w.transpose(1,2,3,0)[:]
+        convX[:,:,:H,:W]=col[:]
+        convW[:,:,:,:FN]=col_W.transpose(1,2,3,0)[:]
+        cb[:]=b[:]
         
         #CPU Calculation
         #im2col->dot
@@ -328,12 +281,13 @@ def GPU_conv(x,w,b,Relu_flag=0):
         start=time.time()
         out_h = 1 + int((H + 2*pad - FH) / stride)
         out_w = 1 + int((W + 2*pad - FW) / stride)
-        col = im2col(x, FH, FW, stride, pad)
-        col_W = w.reshape(FN, -1).T
+        #col = im2col(x, FH, FW, stride, pad)
+        #col_W = w.reshape(FN, -1).T
+        col = im2col(col, FH, FW, stride, pad)
+        col_W = col_W.reshape(FN, -1).T
         out = np.dot(col, col_W)+b
-        out = np.maximum(out,0.0)
         CPU = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
-        cetime=time.time()-start
+        cpuetime=time.time()-start
         
         
         uniforms=drv.alloc((n_threads,16),'uint32')
@@ -348,31 +302,31 @@ def GPU_conv(x,w,b,Relu_flag=0):
         uniforms[:,7]=C
         uniforms[:,8]=np.arange(1,(n_threads+1))
         uniforms[:,9]=n_threads
-        uniforms[:,10]=Relu_flag+1
+        uniforms[:,10]=0
         code=drv.program(conv,calc_H,calc_W,FH,FW,calc_FN,calc_oH,calc_oW)
 
-    
+        etime=0
         start=time.time()
         drv.execute(
             n_threads=n_threads,
             program=code,
             uniforms=uniforms
         )
-        getime=time.time()-start
-
-        GPU=np.zeros((C,FN,oH,oW))
-        convout=convout.transpose(0,3,1,2)
-
-        GPU[:]=convout[:,:FN,:oH,:oW]
-        print("===========Conv&Relu=============")
-        print("x size:{0},w size:{1}".format(x.shape,w.shape))
-        print("CPU time:{:.4f}".format(cetime*1000),"[msec]")
-        print("GPU time:{:.4f}".format(getime*1000),"[msec]")
+        etime=time.time()-start
+        GPU=np.zeros((FN,C,oH,oW))
+        convout=convout.transpose(3,0,1,2)
+        GPU[:]=convout[:FN,:,:oH,:oW]
+        print("GPU time:{0}".format(etime*1000),"[msec]")
+        print("CPU time:{0}".format(cpuetime*1000),"[msec]")
         print('minimum absolute error: {:.4e}'.format(
             float(np.min(np.abs(CPU[:] - GPU[:])))))
         print('maximum absolute error: {:.4e}'.format(
             float(np.max(np.abs(CPU[:] - GPU[:])))))
-        #print(CPU[:,:,:,:])
-        #print(GPU[:,:,:,:])
-        return GPU
+        print('minimum relative error: {:.4e}'.format(
+                float(np.min(np.abs((CPU - GPU) / CPU)))))
+        print('maximum relative error: {:.4e}'.format(
+                float(np.max(np.abs((CPU - GPU) / CPU)))))
 
+        
+        return GPU
+main()

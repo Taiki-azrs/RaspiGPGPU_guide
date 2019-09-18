@@ -1,5 +1,4 @@
 # coding:utf-8
-#TODO Cループバグ直す
 import numpy as np
 import time
 import math
@@ -153,6 +152,7 @@ def GPU_pool(x,stride,pad):
         )
         getime=time.time()-start
         print("===========Pooling=============")
+        print("x size:{0},stride:{1},pad:{2}".format(x.shape,stride,pad))
         print("CPU time:{:.4f}[msec]".format(cetime*1000))
         print("GPU time:{:.4f}[msec]".format(getime*1000))
         """

@@ -287,15 +287,15 @@ def GPU_dot(x,w,b,Relu_flag=0):
         out_r=np.zeros((p,r))
         out_r[:]=out[:,:r]
         print("===========Affine&Relu=============")
+        
         if Relu_flag==1:
-            print("Not Relu!")
+            print("x size:{0},w size:{1},Relu:×".format(x.shape,w.shape))
+        else :
+            print("x size:{0},w size:{1},Relu:〇".format(x.shape,w.shape))
         print("CPU time:{:.4f}[msec]".format(cetime*1000))
         print("GPU time:{:.4f}[msec]".format(getime*1000))
         print('minimum absolute error: {:.4e}'.format(
             float(np.min(np.abs(CPUout[:,:r] - out_r[:,:r])))))
         print('maximum absolute error: {:.4e}'.format(
             float(np.max(np.abs(CPUout[:,:r] - out_r[:,:r])))))
-
-
-
         return out_r

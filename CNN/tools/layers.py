@@ -6,6 +6,7 @@ import time
 try:
     from GPU_dotRelu import GPU_dot
     from GPU_pool import GPU_pool
+    from GPU_conv import GPU_conv
     from videocore.driver import Driver
 except:
     print("not Raspi")
@@ -55,7 +56,6 @@ class GPU_Affine:
         self.x = x
         start=time.time()
         out=GPU_dot(self.x,self.W,self.b,self.Relu_flag)
-        print("GPU_Affine",(time.time()-start)*1000,"[msec]")
         return out
 
 
@@ -257,6 +257,18 @@ class Convolution:
         self.x = x
         self.col = col
         self.col_W = col_W
+
+        return out
+class GPU_Convolution:
+    def __init__(self, W, b, stride=1, pad=0,Relu_flag=0):
+        self.W = W
+        self.b = b
+        self.stride = stride
+        self.pad = pad
+        self.Relu_flag=Relu_flag
+        
+    def forward(self,x):
+        out=GPU_conv(x,self.W,self.b,self.Relu_flag)
 
         return out
 
