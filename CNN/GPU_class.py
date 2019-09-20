@@ -17,7 +17,7 @@ img = np.array(Image.open(arg[1]).convert('L'))
 img=img.reshape(1,1,28,28)/255.0
 
 # パラメータのload
-network.load_params("data/simple_params.pkl")
+network.load_params("param/simple_params.pkl")
 
 
 start=time.time()

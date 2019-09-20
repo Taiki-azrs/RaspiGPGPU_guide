@@ -12,15 +12,6 @@ class SimpleConvNet:
 
     conv - relu - pool - affine - relu - affine - softmax
     
-    Parameters
-    ----------
-    input_size : 入力サイズ（MNISTの場合は784）
-    hidden_size_list : 隠れ層のニューロンの数のリスト（e.g. [100, 100, 100]）
-    output_size : 出力サイズ（MNISTの場合は10）
-    activation : 'relu' or 'sigmoid'
-    weight_init_std : 重みの標準偏差を指定（e.g. 0.01）
-        'relu'または'he'を指定した場合は「Heの初期値」を設定
-        'sigmoid'または'xavier'を指定した場合は「Xavierの初期値」を設定
     """
     def __init__(self, input_dim=(1, 28, 28), 
                  conv_param={'filter_num':30, 'filter_size':5, 'pad':0, 'stride':1},

@@ -7,7 +7,6 @@ from videocore.assembler import qpu
 from videocore.driver import Driver
 from tools.functions import *
 from tools.util import im2col, col2im
-from GPU_sgemm import sgemm
 
 
 def mask(idx):

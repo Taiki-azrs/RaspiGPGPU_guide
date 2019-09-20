@@ -14,7 +14,7 @@ img=img.reshape(1,1,28,28)/255.0
 
 
 # パラメータのload
-network.load_params("data/deep_params.pkl")
+network.load_params("param/deep_params.pkl")
 print("softmax:")
 start=time.time()
 ans=network.classi(img)

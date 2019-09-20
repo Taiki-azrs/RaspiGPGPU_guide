@@ -3,13 +3,10 @@ import numpy as np
 from tools.functions import *
 from tools.util import im2col, col2im
 import time
-try:
-    from GPU_dotRelu import GPU_dot
-    from GPU_pool import GPU_pool
-    from GPU_conv import GPU_conv
-    from videocore.driver import Driver
-except:
-    print("not Raspi")
+from GPU_Kernel.GPU_Affine_Relu import GPU_dot
+from GPU_Kernel.GPU_pool import GPU_pool
+from GPU_Kernel.GPU_conv import GPU_conv
+from videocore.driver import Driver
 
 class Relu:
     def __init__(self):
