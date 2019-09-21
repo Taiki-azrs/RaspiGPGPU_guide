@@ -135,7 +135,7 @@ def pimatrix(asm):
     iadd(r1,r1,r3)
     nop()
     
-#====semafo=====    
+#====semaphore=====    
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
     iadd(null,r5,-1,set_flags=True)

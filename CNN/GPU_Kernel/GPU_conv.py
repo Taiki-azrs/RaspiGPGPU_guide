@@ -109,7 +109,6 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
                 ldi(null,mask(CONVW_ADDR),set_flags=True)
                 iadd(r2,r2,r3,cond='zs')
 
-            nop()
             rotate(broadcast,r2,-STR)
             iadd(r0,r0,r5)
             ldi(r1,FW*4)
@@ -158,7 +157,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
             start_dma_load(r5)
             wait_dma_load()
             setup_vpm_read(mode='32bit vertical', Y=16*(m*simfn+n), X=0, nrows=16)
-            setup_vpm_write(mode='32bit vertical',Y=16*(m*simfn+n),X=0) #書き込めるようにする
+            setup_vpm_write(mode='32bit vertical',Y=16*(m*simfn+n),X=0) 
             for i in range(8*(m*simfn+n),8*((m*simfn+n)+1)):
                 fadd(vpm,vpm,ra[i])
                 fadd(vpm,vpm,rb[i])
@@ -258,7 +257,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     
     L.relu_end
     
-#====semafo=====    　すべてのスレッドが終わるまで待つ　詳細はquita見て
+#====semaphore=====    
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
     iadd(null,r5,-1,set_flags=True)
@@ -270,7 +269,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     iadd(r1, r5, -1,set_flags=True)
     L.sem_down
     jzc(L.sem_down)
-    sema_down(COMPLETED)    # Wait completion of all threads.
+    sema_down(COMPLETED)    
     nop()
     iadd(r1, r1, -1)
     interrupt()
@@ -280,10 +279,6 @@ def GPU_conv(x,w,b,Relu_flag=0):
 #def main():
     with Driver() as drv:
         SIMD=16;UNIFORM=64;n_threads=12
-        """
-        N=1;C=1;H=28;W=28
-        FN=32;FH=5;FW=5
-        """
         N,C,H,W=x.shape
         FN,C,FH,FW=w.shape
         calc_H=H;calc_W=W;calc_FN=FN
@@ -308,14 +303,6 @@ def GPU_conv(x,w,b,Relu_flag=0):
         convout[:]=0;convX[:]=0;convW[:]=0;cb[:]=0
         pad=0
         stride=1
-        """
-        x=np.random.randn(N,C,H,W)
-        w=np.random.randn(FN,C,FH,FW)
-        b=np.random.randn(FN)
-        x[:]=np.arange(N*C*H*W).reshape(N,C,H,W)
-        w[:]=np.arange(FN*FH*FW).reshape(FN,1,FH,FW)
-        b[:FN]=np.arange(FN)
-        """
         
         convX[:,:,:H,:W]=x[:]
         convW[:,:,:,:FN]=w.transpose(1,2,3,0)[:]

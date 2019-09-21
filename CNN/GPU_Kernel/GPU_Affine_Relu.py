@@ -159,7 +159,7 @@ def dot(asm,r_simd_iter): #test
 
 
     
-#====semafo=====    　すべてのスレッドが終わるまで待つ　詳細はquita見て
+#====semaphore=====    
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
     iadd(null,r5,-1,set_flags=True)
