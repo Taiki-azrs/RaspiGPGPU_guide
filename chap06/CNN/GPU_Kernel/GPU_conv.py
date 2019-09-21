@@ -19,7 +19,7 @@ def mask2(idx1,idx2):
     values[idx2] = 0
     return values
 @qpu
-def conv(asm,H,W,FH,FW,FN,oH,oW): #test
+def conv(asm,H,W,FH,FW,FN,oH,oW): 
     CONVW_ADDR=0
     CONVX_ADDR=1
     CONVOUT_ADDR=2
@@ -65,7 +65,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     rotate(broadcast,r2,-CONVW_ADDR)
     mov(r2,r5,cond='zs')
     
-    ldi(null,mask(X_BACKUP),set_flags=True)
+    ldi(null,mask(X_BACKUP),set_flags=True) #Backup
     rotate(broadcast,r2,-CONVX_ADDR)
     mov(r2,r5,cond='zs')
     
@@ -79,7 +79,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     
     #set uniform end
 
-    for i in range(32):
+    for i in range(32): #初期化
         mov(rb[i],0.0)
         mov(ra[i],0.0)
     L.cloop
@@ -125,7 +125,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
         ldi(null,mask(CONVW_ADDR),set_flags=True)
         mov(r2,r5,cond='zs')
         
-        if((n+1)*16==int(oW)):
+        if((n+1)*16==int(oW)): #端処理
             ldi(r1,(int(FW/2))*2*4)
             iadd(r0,r0,r1)
 
@@ -201,7 +201,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     ldi(null,mask2(CONVW_ADDR,W_BACKUP),set_flags=True)
     iadd(r2,r5,r1,cond='zs')
     
-    ldi(null,mask(C_ITER),set_flags=True)
+    ldi(null,mask(C_ITER),set_flags=True) #Cloop
     isub(r2,r2,1,cond='zs')
     jzc(L.cloop)
     nop()
@@ -209,7 +209,7 @@ def conv(asm,H,W,FH,FW,FN,oH,oW): #test
     nop()
     nop()
     
-    rotate(broadcast,r2,-RELU)
+    rotate(broadcast,r2,-RELU) #Relu
     isub(null,r5,1)
     jzc(L.relu_end)
     nop()
@@ -305,7 +305,7 @@ def GPU_conv(x,w,b,Relu_flag=0):
         stride=1
         
         convX[:,:,:H,:W]=x[:]
-        convW[:,:,:,:FN]=w.transpose(1,2,3,0)[:]
+        convW[:,:,:,:FN]=w.transpose(1,2,3,0)[:]#転置してcopy
         cb[:FN]=b[:]
         
         #CPU Calculation
@@ -322,7 +322,7 @@ def GPU_conv(x,w,b,Relu_flag=0):
         cetime=time.time()-start
         
         
-        uniforms=drv.alloc((n_threads,16),'uint32')
+        uniforms=drv.alloc((n_threads,16),'uint32') 
         uniforms[:,0]=convW.addresses()[0,0,0,0]
         for th in range(n_threads):
             uniforms[th,1]=convX.addresses()[0,0,th*th_oH,0]
@@ -335,7 +335,7 @@ def GPU_conv(x,w,b,Relu_flag=0):
         uniforms[:,8]=np.arange(1,(n_threads+1))
         uniforms[:,9]=n_threads
         uniforms[:,10]=Relu_flag+1
-        code=drv.program(conv,calc_H,calc_W,FH,FW,calc_FN,calc_oH,calc_oW)
+        code=drv.program(conv,calc_H,calc_W,FH,FW,calc_FN,calc_oH,calc_oW)#引数渡し
 
     
         start=time.time()

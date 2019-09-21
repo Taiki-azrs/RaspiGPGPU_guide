@@ -88,7 +88,7 @@ def piadd(asm):
 
 
 
-#====semaphore=====    
+#====semaphore=====   
     sema_up(COMPLETED)
     rotate(broadcast,r2,-THR_ID)
     iadd(null,r5,-1,set_flags=True)
