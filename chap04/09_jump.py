@@ -3,13 +3,6 @@ import numpy as np
 from videocore.assembler import qpu
 from videocore.driver import Driver
 
-
-def astype_int24(array):
-    array = np.left_shift(array, 8)
-    array = np.right_shift(array, 8)
-    return array
-
-
 @qpu
 def kernel(asm):
     # VPM使うことは確定なので最初にセットアップしておく

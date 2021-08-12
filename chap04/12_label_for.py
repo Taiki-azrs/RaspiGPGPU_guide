@@ -4,12 +4,6 @@ from videocore.assembler import qpu
 from videocore.driver import Driver
 
 
-def astype_int24(array):
-    array = np.left_shift(array, 8)
-    array = np.right_shift(array, 8)
-    return array
-
-
 @qpu
 def kernel(asm):
     # VPM使うことは確定なので最初にセットアップしておく
@@ -24,22 +18,16 @@ def kernel(asm):
     setup_vpm_read(nrows = 1)
     mov(r0, vpm)
 
-    # 0x0001とのビット論理積
-    band(null, r0, 1)
+    ldi(r1, 5)  # Loop回数
 
-    # Zフラグがクリアならジャンプ
-    jzc(L.odd)
-    nop(); nop(); nop()
-    # 偶数の場合
-    mov(vpm, 2)
-    jmp(L.end)
-    nop(); nop(); nop()
+    if(True):  # Loop範囲
+      L.loop
+      fadd(r0, r0, 1.0)
+      isub(r1, r1, 1)
+      jzc(L.loop)
+      nop(); nop(); nop();
 
-    # 奇数の場合
-    L.odd
-    mov(vpm, 1)
-
-    L.end
+    mov(vpm, r0)
 
     # [VPM->メモリ]:16要素*1行分書き込む
     setup_dma_store(nrows = 1)
@@ -49,10 +37,10 @@ def kernel(asm):
     exit()
 
 with Driver() as drv:
-    list_a = drv.alloc(16, 'uint32')
-    list_a[:] = 3
+    list_a = drv.alloc(16, 'float32')
+    list_a[:] = 0.0
 
-    out = drv.alloc(16, 'uint32')
+    out = drv.alloc(16, 'float32')
 
     print(' list_a '.center(80, '='))
     print(list_a)
@@ -65,3 +53,11 @@ with Driver() as drv:
 
     print(' out '.center(80, '='))
     print(out)
+
+    for i in range(5):
+      list_a += 1.0
+    cpu_ans = list_a
+
+    error   = cpu_ans - out
+    print(' error '.center(80, '='))
+    print(np.abs(error))
