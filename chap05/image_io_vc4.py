@@ -139,7 +139,7 @@ with Driver() as drv:
         uniforms = uniforms
     )
 
-    print(OUT-CC)
+    print("Sum of diff:", np.sum(OUT-CC))
 
     pil_img = Image.fromarray(OUT.astype(np.uint8))
     pil_img.save('./out.png')
