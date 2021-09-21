@@ -12,6 +12,9 @@ def mask(idx):
 
 @qpu
 def kernel(asm):
+    # VPM使うことは確定なので最初にセットアップしておく
+    setup_vpm_write()
+
     A_ADDR   =0 #インデックス
     OUT_ADDR =1
 
@@ -21,6 +24,8 @@ def kernel(asm):
     ldi(null,mask(OUT_ADDR),set_flags=True)
     mov(r2,uniform,cond='zs')
 
+    nop()  # rotate命令の直前に回転するアキュムレータ(今回はr2)に値を書き込んではいけない
+    
     rotate(broadcast,r2,-A_ADDR)
     # r5=[list_a.address, list_a.address, ..... list_a.address]
 
@@ -30,8 +35,9 @@ def kernel(asm):
     iadd(r0,r5,r3)
     # この計算により、4byteエレメントの連番アドレスが得られる
 
-    setup_vpm_write()
-    mov(vpm, r0)
+    mov(tmu0_s,r0)
+    nop(sig='load tmu0')
+    mov(vpm, r4)
 
     # [VPM->メモリ]:16要素*1行分書き込む
     setup_dma_store(nrows = 1)
@@ -42,10 +48,13 @@ def kernel(asm):
     exit()
 
 with Driver() as drv:
-    list_a = drv.alloc(16, 'uint32')
-    list_a[:] = 0.0
+    list_a = drv.alloc(16, 'float32')
+    list_a[:] = np.random.random(16).astype('float32')
 
-    out = drv.alloc(16, 'uint32')
+    out = drv.alloc(16, 'float32')
+
+    print(' list_a '.center(80, '='))
+    print(list_a)
 
     drv.execute(
         n_threads=1,
@@ -53,8 +62,9 @@ with Driver() as drv:
         uniforms =[list_a.address, out.address]
     )
 
-    print("list_a.address:", list_a.address)
-
     print(' out '.center(80, '='))
-    for i,addr in enumerate(out):
-      print(f"{i:02d}: {addr}")
+    print(out)
+
+    error   = list_a - out
+    print(' error '.center(80, '='))
+    print(np.abs(error))
