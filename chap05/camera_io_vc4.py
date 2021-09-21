@@ -68,8 +68,8 @@ def piadd(asm):
         iadd(r0, r0, r5)
 
         #rb
-        mov(tmu0_s,r0)
-        nop(sig='load tmu0')
+        mov(tmu1_s,r0)
+        nop(sig='load tmu1')
         fsub(null, r4, r1, set_flags=True)
         mov(rb[i], 0.0, cond='ns')
         mov(rb[i], r3,  cond='nc')
@@ -181,6 +181,7 @@ with Driver() as drv:
               program  = drv.program(piadd),
               uniforms = uniforms
           )
+          drv.ctlmem.cur_pos['code'] = drv.ctlmem.start_pos['code']
 
           out_img = Image.fromarray(OUT.astype(np.uint8))
           draw_img = Image.new('L', (W*2, H), 0)
