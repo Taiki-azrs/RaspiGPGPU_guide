@@ -178,10 +178,9 @@ with Driver() as drv:
 
           drv.execute(
               n_threads= n_threads,
-              program  = drv.program(piadd),
+              program  = code,
               uniforms = uniforms
           )
-          drv.ctlmem.cur_pos['code'] = drv.ctlmem.start_pos['code']
 
           out_img = Image.fromarray(OUT.astype(np.uint8))
           draw_img = Image.new('L', (W*2, H), 0)
